@@ -17,49 +17,60 @@ API_URL = "https://huggingface.co"
 API_URL = "https://huggingface.co"
 
 def panggil_huggingface_api(prompt_teks):
-    """Fungsi umum untuk mengirim request ke server AI Hugging Face secara aman dengan Token"""
+    """Fungsi final mengirim request aman dengan validasi Content-Type & Token"""
     try:
         hf_token = st.secrets["HF_TOKEN"]
-        headers = {"Authorization": f"Bearer {hf_token}"}
+        # PERBAIKAN UTAMA: Wajib menyertakan Content-Type dan Token secara eksplisit
+        headers = {
+            "Authorization": f"Bearer {hf_token}",
+            "Content-Type": "application/json"
+        }
     except Exception:
-        return "Error: Token HF_TOKEN belum dikonfigurasi di menu Advanced Settings -> Secrets Streamlit."
+        return "Error: Kode token HF_TOKEN belum dimasukkan ke menu Advanced Settings -> Secrets di Streamlit Cloud."
         
     payload = {
         "inputs": prompt_teks,
-        "parameters": {"max_new_tokens": 250, "temperature": 0.7}
+        "parameters": {
+            "max_new_tokens": 200, 
+            "temperature": 0.7,
+            "return_full_text": False  # Mencegah teks prompt asli ikut terulang di jawaban
+        }
     }
     
     try:
+        # Kirim request post ke server Hugging Face
         response = requests.post(API_URL, json=payload, headers=headers)
         
-        # Jika server Hugging Face sedang bersiap memuat model
+        # Skenario jika model sedang tidur / loading di server HF
         if response.status_code == 503:
-            return "Model AI di server Hugging Face sedang dinyalakan dari mode tidur. Silakan klik tombol lagi dalam 15-20 detik."
+            return "Model AI di server Hugging Face sedang dibangunkan dari mode tidur. Mohon tunggu 15 detik lalu klik kembali tombolnya."
             
+        # Skenario jika akses ditolak atau token salah
+        if response.status_code in [401, 403]:
+            return "Akses Ditolak! Pastikan Token 'Read' dari Hugging Face yang Anda masukkan di menu Secrets sudah benar dan aktif."
+
+        # Membaca isi respons teks mentah terlebih dahulu untuk memastikan keamanan data
+        teks_mentah = response.text.strip()
+        if not teks_mentah:
+            return "Menerima respons kosong dari server. Silakan coba kirim ulang chat Anda."
+
+        # Konversi teks ke data JSON
         hasil_json = response.json()
         
-        # PERBAIKAN STRUKTUR PEMBACAAN JSON HUGGING FACE
-        # Skenario 1: Hasil berupa List (Format standar Inference API untuk LLM)
+        # Ekstrak hasil teks (Skenario Format List)
         if isinstance(hasil_json, list) and len(hasil_json) > 0:
-            item_pertama = hasil_json[0]
-            if isinstance(item_pertama, dict) and 'generated_text' in item_pertama:
-                teks_keluar = item_pertama['generated_text']
-                if prompt_teks in teks_keluar:
-                    teks_keluar = teks_keluar.replace(prompt_teks, "")
-                return teks_keluar.strip()
+            item = hasil_json[0]
+            if isinstance(item, dict) and 'generated_text' in item:
+                return item['generated_text'].strip()
                 
-        # Skenario 2: Hasil berupa Dictionary langsung
+        # Ekstrak hasil teks (Skenario Format Dictionary)
         elif isinstance(hasil_json, dict):
             if 'generated_text' in hasil_json:
-                teks_keluar = hasil_json['generated_text']
-                if prompt_teks in teks_keluar:
-                    teks_keluar = teks_keluar.replace(prompt_teks, "")
-                return teks_keluar.strip()
+                return hasil_json['generated_text'].strip()
             elif "error" in hasil_json:
-                return f"Pesan dari Server: {hasil_json['error']}"
+                return f"Pesan Server Hugging Face: {hasil_json['error']}"
                 
-        # Skenario 3: Jika respons tidak dikenal, tampilkan teks aslinya untuk pelacakan mudah
-        return f"Gagal mengekstrak teks AI. Respons mentah server: {str(hasil_json)}"
+        return f"Format data tidak dikenali. Respons mentah: {teks_mentah[:200]}"
         
     except Exception as e:
         return f"Koneksi ke Hugging Face terputus: {str(e)}"
