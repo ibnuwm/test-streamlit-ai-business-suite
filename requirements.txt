@@ -1,6 +1,6 @@
 streamlit
-transformers==4.44.2
-torch==2.4.1
+transformers
+torch
 pandas
 openpyxl
 pillow
