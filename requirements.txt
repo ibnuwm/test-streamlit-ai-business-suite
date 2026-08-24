@@ -1,8 +1,5 @@
-streamlit==1.38.0
-transformers==4.40.0
-torch==2.2.2
-torchvision==0.17.2
-sentencepiece==0.2.0
+streamlit
+requests
 pandas
 openpyxl
 pillow
