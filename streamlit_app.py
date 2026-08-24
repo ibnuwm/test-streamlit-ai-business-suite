@@ -18,8 +18,6 @@ API_URL = "https://huggingface.co"
 
 def panggil_huggingface_api(prompt_teks):
     """Fungsi umum untuk mengirim request ke server AI Hugging Face secara aman dengan Token"""
-    
-    # Membaca token rahasia dari sistem keamanan Streamlit
     try:
         hf_token = st.secrets["HF_TOKEN"]
         headers = {"Authorization": f"Bearer {hf_token}"}
@@ -34,28 +32,35 @@ def panggil_huggingface_api(prompt_teks):
     try:
         response = requests.post(API_URL, json=payload, headers=headers)
         
-        # JIKA SERVER SEDANG MEMUAT MODEL (LOADING TIME)
+        # Jika server Hugging Face sedang bersiap memuat model
         if response.status_code == 503:
-            return "Model AI di server Hugging Face sedang dinyalakan kembali dari mode tidur. Silakan klik tombol lagi dalam 15-20 detik."
+            return "Model AI di server Hugging Face sedang dinyalakan dari mode tidur. Silakan klik tombol lagi dalam 15-20 detik."
             
         hasil_json = response.json()
         
-        # Ekstrak hasil teks jika output berupa list
+        # PERBAIKAN STRUKTUR PEMBACAAN JSON HUGGING FACE
+        # Skenario 1: Hasil berupa List (Format standar Inference API untuk LLM)
         if isinstance(hasil_json, list) and len(hasil_json) > 0:
-            teks_keluar = hasil_json[0].get('generated_text', '')
-            if prompt_teks in teks_keluar:
-                teks_keluar = teks_keluar.replace(prompt_teks, "")
-            return teks_keluar.strip()
-        # Ekstrak hasil teks jika output berupa dict langsung
-        elif isinstance(hasil_json, dict) and 'generated_text' in hasil_json:
-            teks_keluar = hasil_json.get('generated_text', '')
-            if prompt_teks in teks_keluar:
-                teks_keluar = teks_keluar.replace(prompt_teks, "")
-            return teks_keluar.strip()
-        elif isinstance(hasil_json, dict) and "error" in hasil_json:
-            return f"Respons Server: {hasil_json['error']}"
-            
-        return "Gagal mendapatkan respons valid dari AI."
+            item_pertama = hasil_json[0]
+            if isinstance(item_pertama, dict) and 'generated_text' in item_pertama:
+                teks_keluar = item_pertama['generated_text']
+                if prompt_teks in teks_keluar:
+                    teks_keluar = teks_keluar.replace(prompt_teks, "")
+                return teks_keluar.strip()
+                
+        # Skenario 2: Hasil berupa Dictionary langsung
+        elif isinstance(hasil_json, dict):
+            if 'generated_text' in hasil_json:
+                teks_keluar = hasil_json['generated_text']
+                if prompt_teks in teks_keluar:
+                    teks_keluar = teks_keluar.replace(prompt_teks, "")
+                return teks_keluar.strip()
+            elif "error" in hasil_json:
+                return f"Pesan dari Server: {hasil_json['error']}"
+                
+        # Skenario 3: Jika respons tidak dikenal, tampilkan teks aslinya untuk pelacakan mudah
+        return f"Gagal mengekstrak teks AI. Respons mentah server: {str(hasil_json)}"
+        
     except Exception as e:
         return f"Koneksi ke Hugging Face terputus: {str(e)}"
 
