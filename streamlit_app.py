@@ -12,11 +12,20 @@ st.set_page_config(page_title="AI Business Suite Pro", page_icon="🚀", layout=
 # Kita menggunakan model Llama-3 milik Meta yang di-host gratis oleh Hugging Face
 API_URL = "https://huggingface.co"
 
+# CARI FUNGSI INI DI STREAMLIT_APP.PY ANDA DAN GANTI DENGAN KODE BERIKUT:
+
+API_URL = "https://huggingface.co"
+
 def panggil_huggingface_api(prompt_teks):
-    """Fungsi umum untuk mengirim request ke server AI Hugging Face secara gratis"""
-    # Catatan: API ini gratis tanpa token untuk penggunaan awal. 
-    # Jika nanti traffic padat, Anda bisa memasukkan HF Token gratis Anda di bagian headers.
-    headers = {} 
+    """Fungsi umum untuk mengirim request ke server AI Hugging Face secara aman dengan Token"""
+    
+    # Membaca token rahasia dari sistem keamanan Streamlit
+    try:
+        hf_token = st.secrets["HF_TOKEN"]
+        headers = {"Authorization": f"Bearer {hf_token}"}
+    except Exception:
+        return "Error: Token HF_TOKEN belum dikonfigurasi di menu Advanced Settings -> Secrets Streamlit."
+        
     payload = {
         "inputs": prompt_teks,
         "parameters": {"max_new_tokens": 250, "temperature": 0.7}
@@ -24,17 +33,28 @@ def panggil_huggingface_api(prompt_teks):
     
     try:
         response = requests.post(API_URL, json=payload, headers=headers)
+        
+        # JIKA SERVER SEDANG MEMUAT MODEL (LOADING TIME)
+        if response.status_code == 503:
+            return "Model AI di server Hugging Face sedang dinyalakan kembali dari mode tidur. Silakan klik tombol lagi dalam 15-20 detik."
+            
         hasil_json = response.json()
         
-        # Ekstrak teks balasan dari struktur output Llama-3
+        # Ekstrak hasil teks jika output berupa list
         if isinstance(hasil_json, list) and len(hasil_json) > 0:
             teks_keluar = hasil_json[0].get('generated_text', '')
-            # Membersihkan sisa prompt asli jika terikut di output
             if prompt_teks in teks_keluar:
                 teks_keluar = teks_keluar.replace(prompt_teks, "")
             return teks_keluar.strip()
-        elif "error" in hasil_json:
-            return f"Server Hugging Face sedang bersiap: {hasil_json['error']}. Silakan klik tombol lagi dalam 10 detik."
+        # Ekstrak hasil teks jika output berupa dict langsung
+        elif isinstance(hasil_json, dict) and 'generated_text' in hasil_json:
+            teks_keluar = hasil_json.get('generated_text', '')
+            if prompt_teks in teks_keluar:
+                teks_keluar = teks_keluar.replace(prompt_teks, "")
+            return teks_keluar.strip()
+        elif isinstance(hasil_json, dict) and "error" in hasil_json:
+            return f"Respons Server: {hasil_json['error']}"
+            
         return "Gagal mendapatkan respons valid dari AI."
     except Exception as e:
         return f"Koneksi ke Hugging Face terputus: {str(e)}"
